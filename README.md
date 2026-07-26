@@ -1,10 +1,10 @@
 # Aislamiento multi-tenant en PostgreSQL, con pruebas negativas
 
-[![CI](https://github.com/LukyPlay/multi-tenant-rls/actions/workflows/ci.yml/badge.svg)](https://github.com/LukyPlay/multi-tenant-rls/actions/workflows/ci.yml)
+[![CI](https://github.com/joshua-angulo/multi-tenant-rls/actions/workflows/ci.yml/badge.svg)](https://github.com/joshua-angulo/multi-tenant-rls/actions/workflows/ci.yml)
 
 Implementación mínima y ejecutable del patrón que uso para separar los datos de cada cliente en un SaaS: Row Level Security en la base de datos, no filtros en el controlador. Unas 200 líneas de SQL y TypeScript, 16 pruebas, sin dependencias más allá de `pg` y `vitest`.
 
-Es el patrón descrito en [este case study](https://github.com/LukyPlay/case-studies/blob/main/luckai-saas-multitenant.md), aislado para que se pueda leer y correr en dos minutos.
+Es el patrón descrito en [este case study](https://github.com/joshua-angulo/case-studies/blob/main/luckai-saas-multitenant.md), aislado para que se pueda leer y correr en dos minutos.
 
 ## El problema
 
