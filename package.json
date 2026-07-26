@@ -1,0 +1,25 @@
+{
+  "name": "multi-tenant-rls",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Aislamiento multi-tenant en PostgreSQL con Row Level Security, con pruebas negativas",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "db:up": "docker compose up -d --wait",
+    "db:down": "docker compose down -v"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/pg": "^8.11.10",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
