@@ -2,7 +2,7 @@
   "name": "multi-tenant-rls",
   "version": "1.0.0",
   "private": true,
-  "description": "Aislamiento multi-tenant en PostgreSQL con Row Level Security, con pruebas negativas",
+  "description": "Multi-tenant isolation in PostgreSQL with Row Level Security, negative-tested",
   "type": "module",
   "engines": {
     "node": ">=20"

@@ -8,7 +8,7 @@ on:
 
 jobs:
   test:
-    name: Pruebas de aislamiento
+    name: Isolation tests
     runs-on: ubuntu-latest
 
     services:

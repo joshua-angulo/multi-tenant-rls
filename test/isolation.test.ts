@@ -29,10 +29,10 @@ const countDocuments = async (userId: string | null): Promise<number> =>
         return Number(one(rows).count)
     })
 
-describe('quién puede leer', () => {
+describe('who can read', () => {
     // La prueba positiva va primero a propósito: sin ella, todas las negativas de
     // abajo pasarían igual con la tabla vacía.
-    it('un miembro activo ve los documentos de su inquilino, y solo ésos', async () => {
+    it("an active member sees their tenant's documents, and only those", async () => {
         const titles = await asAppUser(pool, FIXTURE.activeInAcme, async (client) => {
             const { rows } = await client.query<{ title: string }>(
                 'select title from documents order by title',
@@ -42,29 +42,29 @@ describe('quién puede leer', () => {
         expect(titles).toEqual(['Contrato Acme', 'Nómina Acme'])
     })
 
-    it('un miembro suspendido no ve nada', async () => {
+    it('a suspended member sees nothing', async () => {
         // El caso que motivó todo esto: el filtro por inquilino en el controlador
         // es correcto y aun así el suspendido leía. El estado de la membresía no
         // vive en la consulta, vive en la política.
         expect(await countDocuments(FIXTURE.suspendedInAcme)).toBe(0)
     })
 
-    it('un miembro invitado que aún no acepta no ve nada', async () => {
+    it('an invited member who has not accepted yet sees nothing', async () => {
         expect(await countDocuments(FIXTURE.invitedInAcme)).toBe(0)
     })
 
-    it('un usuario sin ninguna membresía no ve nada', async () => {
+    it('a user with no membership sees nothing', async () => {
         expect(await countDocuments(FIXTURE.strangerUser)).toBe(0)
     })
 
-    it('sin identidad en la sesión no se ve nada: falla cerrado', async () => {
+    it('with no identity in the session nothing is visible: fail closed', async () => {
         // Si la capa de aplicación olvida fijar `app.user_id`, el resultado correcto
         // es cero filas. El resultado peligroso —y el que da una consulta sin RLS—
         // sería la tabla completa.
         expect(await countDocuments(null)).toBe(0)
     })
 
-    it('un miembro activo de un inquilino no alcanza los documentos del otro', async () => {
+    it("an active member of one tenant cannot reach the other tenant's documents", async () => {
         const visible = await asAppUser(pool, FIXTURE.activeInGlobex, async (client) => {
             const { rows } = await client.query<{ title: string }>('select title from documents')
             return rows.map((r) => r.title)
@@ -72,7 +72,7 @@ describe('quién puede leer', () => {
         expect(visible).toEqual(['Contrato Globex'])
     })
 
-    it('un miembro ve sus membresías aunque esté suspendido', async () => {
+    it('a member can see their own memberships even when suspended', async () => {
         // Un usuario dado de baja tiene que poder ver que está dado de baja: si la
         // política también le ocultara su membresía, la interfaz no podría explicar
         // por qué no ve nada.
@@ -84,8 +84,8 @@ describe('quién puede leer', () => {
     })
 })
 
-describe('quién puede escribir', () => {
-    it('un miembro activo escribe en su propio inquilino', async () => {
+describe('who can write', () => {
+    it('an active member writes to their own tenant', async () => {
         const inserted = await asAppUser(pool, FIXTURE.activeInAcme, async (client) => {
             const { rowCount } = await client.query(
                 'insert into documents (tenant_id, title) values ($1, $2)',
@@ -96,7 +96,7 @@ describe('quién puede escribir', () => {
         expect(inserted).toBe(1)
     })
 
-    it('no puede insertar un documento en otro inquilino', async () => {
+    it('cannot insert a document into another tenant', async () => {
         // Sin `with check` en la política de INSERT, esto pasaría: `using` solo
         // gobierna lo que se lee.
         await expect(
@@ -109,7 +109,7 @@ describe('quién puede escribir', () => {
         ).rejects.toThrow(/row-level security/i)
     })
 
-    it('no puede mover un documento propio a otro inquilino', async () => {
+    it('cannot move an own document into another tenant', async () => {
         await expect(
             asAppUser(pool, FIXTURE.activeInAcme, (client) =>
                 client.query('update documents set tenant_id = $1 where title = $2', [
@@ -120,7 +120,7 @@ describe('quién puede escribir', () => {
         ).rejects.toThrow(/row-level security/i)
     })
 
-    it('un UPDATE sobre documentos ajenos no falla: simplemente no alcanza ninguna fila', async () => {
+    it("an UPDATE on someone else's documents does not error: it simply reaches no rows", async () => {
         // Detalle que sorprende y conviene tener escrito: RLS no lanza error al
         // actualizar filas invisibles, las filtra. Un `rowCount` de 0 es la señal
         // de autorización, y el código de la aplicación tiene que leerlo.
@@ -134,7 +134,7 @@ describe('quién puede escribir', () => {
         expect(affected).toBe(0)
     })
 
-    it('un DELETE sobre documentos ajenos tampoco alcanza ninguna fila', async () => {
+    it("a DELETE on someone else's documents reaches no rows either", async () => {
         const affected = await asAppUser(pool, FIXTURE.activeInGlobex, async (client) => {
             const { rowCount } = await client.query('delete from documents where title = $1', [
                 'Contrato Acme',
@@ -145,8 +145,8 @@ describe('quién puede escribir', () => {
     })
 })
 
-describe('las garantías del propio mecanismo', () => {
-    it('el dueño de las tablas también queda sujeto a las políticas', async () => {
+describe('guarantees of the mechanism itself', () => {
+    it('the table owner is also subject to the policies', async () => {
         // Esto es lo que compra `force row level security`. Con solo `enable`, el
         // dueño —normalmente el rol que corre las migraciones— vería las tres filas.
         const visible = await asOwner(pool, async (client) => {
@@ -156,7 +156,7 @@ describe('las garantías del propio mecanismo', () => {
         expect(visible).toBe(0)
     })
 
-    it('un superusuario sí las ignora, y por eso la aplicación nunca debe conectar como uno', async () => {
+    it('a superuser does bypass them, which is why the app must never connect as one', async () => {
         const visible = await asMigrator(pool, async (client) => {
             const { rows } = await client.query<{ count: string }>('select count(*) from documents')
             return Number(one(rows).count)
@@ -164,7 +164,7 @@ describe('las garantías del propio mecanismo', () => {
         expect(visible).toBe(3)
     })
 
-    it('el rol de la aplicación no tiene SUPERUSER ni BYPASSRLS', async () => {
+    it('the application role has neither SUPERUSER nor BYPASSRLS', async () => {
         // Un atributo de rol concedido de más apaga en silencio todas las políticas
         // de este repositorio. Se afirma aquí para que un cambio futuro lo rompa
         // ruidosamente en CI y no en producción.
@@ -178,7 +178,7 @@ describe('las garantías del propio mecanismo', () => {
         expect(attrs).toEqual({ rolsuper: false, rolbypassrls: false })
     })
 
-    it('si se apaga RLS, la fuga aparece: la prueba detecta su propio fallo', async () => {
+    it('if RLS is turned off, the leak appears: the suite detects its own failure', async () => {
         // Un control que nunca ha fallado no demuestra nada: puede estar apagado.
         // Aquí se inyecta el fallo —desactivar RLS— y se comprueba que el suspendido
         // pasa a ver las tres filas. Todo ocurre dentro de una transacción que se

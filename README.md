@@ -1,54 +1,54 @@
-# Aislamiento multi-tenant en PostgreSQL, con pruebas negativas
+# Multi-tenant isolation in PostgreSQL, with negative tests
 
 [![CI](https://github.com/joshua-angulo/multi-tenant-rls/actions/workflows/ci.yml/badge.svg)](https://github.com/joshua-angulo/multi-tenant-rls/actions/workflows/ci.yml)
 
-Implementación mínima y ejecutable del patrón que uso para separar los datos de cada cliente en un SaaS: Row Level Security en la base de datos, no filtros en el controlador. Unas 200 líneas de SQL y TypeScript, 16 pruebas, sin dependencias más allá de `pg` y `vitest`.
+A small, runnable version of the pattern I use to keep each customer's data separate in a SaaS: Row Level Security in the database instead of a filter in every query. About 200 lines of SQL and TypeScript, 16 tests, and no dependencies beyond `pg` and `vitest`.
 
-Es el patrón descrito en [este case study](https://github.com/joshua-angulo/case-studies/blob/main/luckai-saas-multitenant.md), aislado para que se pueda leer y correr en dos minutos.
+It's the pattern from [this case study](https://github.com/joshua-angulo/case-studies/blob/main/luckai-saas-multitenant.md), pulled out on its own so you can read it and run it in about two minutes.
 
-## El problema
+## The problem
 
-La forma habitual de aislar inquilinos es filtrar en cada consulta:
+The usual way to isolate tenants is to filter every query:
 
 ```sql
 select * from documents where tenant_id = $1;
 ```
 
-Tiene dos defectos. El primero es conocido: hay tantos puntos de fuga como consultas, y basta que un desarrollador olvide la cláusula una vez.
+This has two problems. The first is well known: every query is a place to leak, and it only takes one forgotten clause.
 
-El segundo es el que realmente muerde. Ese filtro **es correcto** y aun así deja pasar al usuario equivocado, porque `tenant_id` responde a "¿de quién es este dato?" y no a "¿este usuario sigue teniendo derecho a verlo?". Un miembro suspendido sigue perteneciendo al inquilino. Un invitado que nunca aceptó, también. La consulta no está mal escrita: la autorización nunca estuvo ahí.
+The second one is easier to miss. The filter above **is correct** and still lets the wrong user in, because `tenant_id` answers "whose data is this?" while the real question is "is this user still allowed to see it?". A suspended member still belongs to the tenant, and so does an invited user who never accepted. The query is fine. The authorization check was never there.
 
-Esto no es hipotético — es la fuga que encontré en una auditoría de mi propio producto, en membresías `suspended` e `invited` que conservaban lectura directa. Ningún endpoint estaba mal. El bug vivía en la política.
+I found exactly this leak while auditing my own product: `suspended` and `invited` memberships could still read data directly. Every endpoint was correct; the bug was in the policy.
 
-## Qué demuestran las pruebas
+## What the tests prove
 
 ```
-quién puede leer
-  ✓ un miembro activo ve los documentos de su inquilino, y solo ésos
-  ✓ un miembro suspendido no ve nada
-  ✓ un miembro invitado que aún no acepta no ve nada
-  ✓ un usuario sin ninguna membresía no ve nada
-  ✓ sin identidad en la sesión no se ve nada: falla cerrado
-  ✓ un miembro activo de un inquilino no alcanza los documentos del otro
-  ✓ un miembro ve sus membresías aunque esté suspendido
+who can read
+  ✓ an active member sees their tenant's documents, and only those
+  ✓ a suspended member sees nothing
+  ✓ an invited member who has not accepted yet sees nothing
+  ✓ a user with no membership sees nothing
+  ✓ with no identity in the session nothing is visible: fail closed
+  ✓ an active member of one tenant cannot reach the other tenant's documents
+  ✓ a member can see their own memberships even when suspended
 
-quién puede escribir
-  ✓ un miembro activo escribe en su propio inquilino
-  ✓ no puede insertar un documento en otro inquilino
-  ✓ no puede mover un documento propio a otro inquilino
-  ✓ un UPDATE sobre documentos ajenos no falla: simplemente no alcanza ninguna fila
-  ✓ un DELETE sobre documentos ajenos tampoco alcanza ninguna fila
+who can write
+  ✓ an active member writes to their own tenant
+  ✓ cannot insert a document into another tenant
+  ✓ cannot move an own document into another tenant
+  ✓ an UPDATE on someone else's documents does not error: it simply reaches no rows
+  ✓ a DELETE on someone else's documents reaches no rows either
 
-las garantías del propio mecanismo
-  ✓ el dueño de las tablas también queda sujeto a las políticas
-  ✓ un superusuario sí las ignora, y por eso la aplicación nunca debe conectar como uno
-  ✓ el rol de la aplicación no tiene SUPERUSER ni BYPASSRLS
-  ✓ si se apaga RLS, la fuga aparece: la prueba detecta su propio fallo
+guarantees of the mechanism itself
+  ✓ the table owner is also subject to the policies
+  ✓ a superuser does bypass them, which is why the app must never connect as one
+  ✓ the application role has neither SUPERUSER nor BYPASSRLS
+  ✓ if RLS is turned off, the leak appears: the suite detects its own failure
 ```
 
-La prueba positiva va primero a propósito: sin ella, todas las negativas pasarían igual con la tabla vacía.
+The positive test comes first on purpose. Without it, every negative test would also pass against an empty table.
 
-## Correrlo
+## Run it
 
 ```bash
 docker compose up -d --wait
@@ -56,48 +56,48 @@ npm install
 npm test
 ```
 
-O contra cualquier PostgreSQL 13+ al que puedas conectarte como superusuario:
+Or against any PostgreSQL 13+ you can reach as a superuser:
 
 ```bash
-DATABASE_URL=postgres://usuario@host:5432/basededatos npm test
+DATABASE_URL=postgres://user@host:5432/database npm test
 ```
 
-## Las cuatro decisiones que sostienen esto
+## The four decisions that hold this together
 
-**`force row level security`, no solo `enable`.** `enable` deja fuera al dueño de la tabla, que normalmente es el rol que corre las migraciones — el mismo que muchas aplicaciones reutilizan para servir tráfico. Sin `force`, las políticas existen y no protegen nada. Hay una prueba que lo afirma, y quitar esa línea la rompe.
+**`force row level security` in addition to `enable`.** `enable` alone skips the table owner, which is usually the role that runs migrations and often the same role the application uses to serve traffic. Without `force`, the policies exist but protect nothing. A test checks this, and removing that line breaks it.
 
-**La identidad viaja en un parámetro de sesión.** La capa de aplicación fija `app.user_id` al abrir la transacción y el resto del código escribe SQL normal, sin recordar un `where tenant_id = ...` en cada línea. Se fija con `set_config($1, $2, true)` parametrizado: interpolar la identidad en el texto del SQL sería una inyección en el mecanismo que sostiene todo el aislamiento.
+**Identity travels in a session parameter.** The application sets `app.user_id` when it opens the transaction, and the rest of the code writes plain SQL without adding `where tenant_id = ...` everywhere. It's set with a parameterized `set_config($1, $2, true)`, because building that string by hand would open an injection point in the one mechanism the whole isolation depends on.
 
-**`with check`, no solo `using`.** `using` gobierna lo que se ve; `with check`, lo que se graba. Sin `with check` en `insert` y `update`, un usuario legítimo de su inquilino puede grabar una fila con el `tenant_id` de otro, o mover una fila existente fuera de su alcance.
+**`with check` as well as `using`.** `using` controls what you can see; `with check` controls what you can write. Without `with check` on `insert` and `update`, a legitimate user of one tenant can write a row with another tenant's `tenant_id`, or move an existing row out of their own reach.
 
-**La comprobación de membresía es `security definer` con el `search_path` fijado.** `security definer` para que la política no dependa de los permisos de lectura del que llama: si mañana se revoca el `select` directo sobre `memberships`, las políticas siguen funcionando. Y el `search_path` fijado porque una función `security definer` con el search_path abierto es una escalada de privilegios esperando a que alguien cree un objeto homónimo en un esquema anterior. Por la misma razón la función pertenece a un rol limitado y no a un superusuario.
+**The membership check is `security definer` with a pinned `search_path`.** `security definer` keeps the policy independent of the caller's read permissions, so if direct `select` on `memberships` is revoked later, the policies keep working. The `search_path` is pinned because a `security definer` function with an open search path lets someone escalate privileges by creating an object with the same name in an earlier schema. For the same reason, the function is owned by a limited role instead of a superuser.
 
-## Un detalle que sorprende
+## A surprising detail
 
-RLS **no lanza error** cuando actualizas o borras filas que no puedes ver: las filtra en silencio. `update ... where id = $1` sobre un documento ajeno devuelve `rowCount: 0`, no una excepción. Ese cero es la señal de autorización, y el código de la aplicación tiene que leerlo — si asume que el update funcionó, responde 200 sobre algo que nunca ocurrió. Hay dos pruebas que fijan ese comportamiento.
+RLS **doesn't raise an error** when you update or delete rows you can't see. It filters them out silently, so `update ... where id = $1` on someone else's document returns `rowCount: 0` instead of throwing. That zero is your authorization signal, and the application has to check it. Otherwise it returns 200 for an update that never happened. Two tests lock in this behavior.
 
-## Verificación por mutación
+## Mutation check
 
-Una suite que solo se ha visto en verde no demuestra nada: puede estar afirmando trivialidades. Rompí las políticas a propósito, una a la vez, y comprobé qué prueba lo detecta:
+If you've only ever seen a test suite pass, you don't know whether it tests anything. So I broke the policies on purpose, one at a time, and checked which test caught each break:
 
-| Mutación | Resultado |
+| Mutation | Result |
 |---|---|
-| Quitar `force row level security` | falla `el dueño de las tablas también queda sujeto a las políticas` |
-| `with check (true)` en el `insert` | falla `no puede insertar un documento en otro inquilino` |
-| La política ignora el estado de la membresía | fallan `un miembro suspendido no ve nada` y `un miembro invitado…` |
+| Remove `force row level security` | fails `the table owner is also subject to the policies` |
+| `with check (true)` on `insert` | fails `cannot insert a document into another tenant` |
+| The policy ignores membership status | fails `a suspended member sees nothing` and `an invited member…` |
 
-Cada regresión la caza exactamente la prueba que debería cazarla, y ninguna otra. Eso es lo que hace que el verde signifique algo.
+Each break is caught by the test meant to catch it and by no other, so a passing run actually tells you something.
 
-## Modelo de confianza, y lo que este repositorio no cubre
+## Trust model, and what this repository does not cover
 
-`app.user_id` lo fija el servidor a partir de una sesión ya autenticada. **Nunca** debe llenarse con un valor que venga del cliente: quien controle ese parámetro controla la identidad. RLS protege de errores del código de aplicación y de consultas olvidadas, no de un atacante con acceso SQL directo bajo un rol que él elige.
+The server sets `app.user_id` from a session it has already authenticated. It must **never** take a value sent by the client, since whoever controls that parameter controls the identity. RLS protects you from mistakes in application code and forgotten filters. An attacker who can run SQL under a role of their choosing is a different problem.
 
-Fuera de alcance a propósito:
+Left out on purpose:
 
-- **Pooling en modo transacción** (PgBouncer y similares). Aquí se usa `set local` dentro de la transacción, que es lo correcto en ese modo; una variante con `set` de sesión filtraría identidad entre peticiones al reciclarse la conexión. Es la trampa más común al llevar este patrón a producción.
-- **Auditoría y rendimiento.** Las políticas se evalúan por fila: en tablas grandes hay que revisar los planes y los índices sobre `tenant_id`.
-- **Migraciones versionadas, autenticación y el resto de la aplicación.** Este repositorio es el mecanismo de aislamiento, no un esqueleto de proyecto.
+- **Transaction-mode pooling** (PgBouncer and similar). This repo uses `set local` inside the transaction, which is right for that mode. A session-level `set` would leak identity between requests when connections get reused, and it's the most common mistake when this pattern goes to production.
+- **Auditing and performance.** Policies run per row, so on large tables check the query plans and the indexes on `tenant_id`.
+- **Versioned migrations, authentication and the rest of an application.** This repo covers the isolation mechanism only.
 
 ---
 
-**In English.** A minimal, runnable implementation of tenant isolation enforced in PostgreSQL through Row Level Security rather than in application controllers, with 16 tests that are mostly negative: suspended members, invited members, missing session identity and cross-tenant writes all resolve to zero rows or a policy violation. It also asserts the guarantees of the mechanism itself — `FORCE` applies to the table owner, the application role holds neither `SUPERUSER` nor `BYPASSRLS`, and disabling RLS makes the leak reappear, proving the suite detects its own failure. Mutation results and the trust model are documented above. Written by **Joshua Angulo González** — [linkedin.com/in/joshuaangulogonzalez](https://www.linkedin.com/in/joshuaangulogonzalez/).
+**En español.** Implementación mínima y ejecutable del aislamiento multi-tenant en PostgreSQL con Row Level Security, en lugar de filtros en el controlador, con 16 pruebas en su mayoría negativas: miembros suspendidos, invitados, sesiones sin identidad y escrituras entre inquilinos terminan en cero filas o en una violación de política. También verifica el propio mecanismo (`FORCE` aplica al dueño de la tabla, el rol de la aplicación no tiene `SUPERUSER` ni `BYPASSRLS`, y al apagar RLS la fuga reaparece). Escrito por **Joshua Angulo González**, [linkedin.com/in/joshuaangulogonzalez](https://www.linkedin.com/in/joshuaangulogonzalez/).
