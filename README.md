@@ -1,10 +1,10 @@
-# Multi-tenant isolation in PostgreSQL, with negative tests
+# Keeping each customer's data separate in PostgreSQL
 
-[![CI](https://github.com/joshua-angulo/multi-tenant-rls/actions/workflows/ci.yml/badge.svg)](https://github.com/joshua-angulo/multi-tenant-rls/actions/workflows/ci.yml)
+[![CI](https://github.com/joshua-angulo/saas-data-isolation/actions/workflows/ci.yml/badge.svg)](https://github.com/joshua-angulo/saas-data-isolation/actions/workflows/ci.yml)
 
-A small, runnable version of the pattern I use to keep each customer's data separate in a SaaS: Row Level Security in the database instead of a filter in every query. About 200 lines of SQL and TypeScript, 16 tests, and no dependencies beyond `pg` and `vitest`.
+In a SaaS, many companies share one database, and each one must only ever see its own data. This repo shows how I enforce that inside PostgreSQL itself, using Row Level Security, so a missing filter in the app can't leak another customer's records. It's about 200 lines of SQL and TypeScript with 16 tests, and it only depends on `pg` and `vitest`.
 
-It's the pattern from [this case study](https://github.com/joshua-angulo/case-studies/blob/main/luckai-saas-multitenant.md), pulled out on its own so you can read it and run it in about two minutes.
+It's the pattern from [this case study](https://github.com/joshua-angulo/case-studies/blob/main/luckagents.md), pulled out on its own so you can read it and run it in about two minutes.
 
 ## The problem
 

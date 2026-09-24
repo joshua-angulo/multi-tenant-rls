@@ -1,5 +1,5 @@
 {
-  "name": "multi-tenant-rls",
+  "name": "saas-data-isolation",
   "version": "1.0.0",
   "private": true,
   "description": "Multi-tenant isolation in PostgreSQL with Row Level Security, negative-tested",
